@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${HOME}/.local/lib/mempalace-mcp-http"
 VENV_DIR="${INSTALL_DIR}/venv"
 BIN_DIR="${HOME}/.local/bin"
@@ -9,12 +8,24 @@ CONFIG_DIR="${HOME}/.config/mempalace-mcp-http"
 ENV_FILE="${CONFIG_DIR}/env"
 SERVICE_NAME="mempalace-mcp-http"
 PORT="${MEMPALACE_HTTP_PORT:-8765}"
+REPO_RAW="https://raw.githubusercontent.com/flejz/mempalace-mcp-http/master"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 err()  { echo -e "${RED}ERROR: $*${NC}" >&2; }
 ok()   { echo -e "${GREEN}✓ $*${NC}"; }
 info() { echo -e "${YELLOW}→ $*${NC}"; }
 warn() { echo -e "${YELLOW}WARNING: $*${NC}"; }
+
+# When run via curl|bash, BASH_SOURCE[0] is unbound — download companion files
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    SCRIPT_DIR="$(mktemp -d)"
+    trap 'rm -rf "${SCRIPT_DIR}"' EXIT
+    info "Downloading files from GitHub..."
+    curl -fsSL "${REPO_RAW}/mempalace_http.py" -o "${SCRIPT_DIR}/mempalace_http.py"
+    curl -fsSL "${REPO_RAW}/token.sh"          -o "${SCRIPT_DIR}/token.sh"
+fi
 
 # 1. Require mempalace — no install, fail fast
 info "Checking mempalace..."
@@ -38,10 +49,17 @@ for _py in python3 python; do
         break
     fi
 done
-# uv tool installs mempalace in an isolated env — locate its Python
+# uv tool installs mempalace in an isolated env — find it via uv tool dir
 if [ -z "${_mp_python}" ] && command -v uv >/dev/null 2>&1; then
-    _uv_py="$(uv tool run --with mempalace python -c "import sys; print(sys.executable)" 2>/dev/null || true)"
-    [ -n "${_uv_py}" ] && _mp_python="${_uv_py}"
+    _tool_base="$(uv tool dir 2>/dev/null || true)"
+    if [ -n "${_tool_base}" ]; then
+        for _candidate in "${_tool_base}/mempalace/bin/python3" "${_tool_base}/mempalace/bin/python"; do
+            if [ -f "${_candidate}" ] && "${_candidate}" -c "import mempalace" 2>/dev/null; then
+                _mp_python="${_candidate}"
+                break
+            fi
+        done
+    fi
 fi
 if [ -z "${_mp_python}" ]; then
     err "Cannot find a Python that can import mempalace. Ensure mempalace is installed."
