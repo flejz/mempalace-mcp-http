@@ -149,13 +149,33 @@ HOSTNAME_VAL="$(hostname -f 2>/dev/null || hostname)"
 
 # 6. Claude Code MCP config
 configure_claude_mcp() {
-    local settings_file="${HOME}/.claude/settings.json"
     local url="http://${HOSTNAME_VAL}:${PORT}/mcp"
+    echo ""
 
-    [ -f "${settings_file}" ] || { info "~/.claude/settings.json not found — skipping auto-config"; return; }
+    if command -v claude >/dev/null 2>&1; then
+        # Preferred: use the official CLI
+        local has_existing=false
+        claude mcp list 2>/dev/null | grep -q "^mempalace" && has_existing=true
 
-    local existing
-    existing="$(python3 -c "
+        if [ "${has_existing}" = true ]; then
+            warn "Existing mempalace MCP config found (claude mcp list)."
+            read -rp "Replace with HTTP config? [y/N] " confirm
+            [[ "${confirm}" =~ ^[yY]$ ]] || { info "Skipped — update manually if needed."; return; }
+            claude mcp remove mempalace 2>/dev/null || true
+        else
+            read -rp "Add mempalace HTTP MCP config via claude CLI? [Y/n] " confirm
+            [[ "${confirm}" =~ ^[nN]$ ]] && { info "Skipped."; return; }
+        fi
+        claude mcp add --transport http mempalace "${url}" \
+            --header "Authorization: Bearer ${TOKEN}"
+        ok "Claude MCP configured: mempalace → ${url}"
+    else
+        # Fallback: direct JSON edit of settings.json
+        local settings_file="${HOME}/.claude/settings.json"
+        [ -f "${settings_file}" ] || { info "claude CLI not found and ~/.claude/settings.json not found — skipping"; return; }
+
+        local existing
+        existing="$(${VENV_PY} -c "
 import json
 with open('${settings_file}') as f:
     cfg = json.load(f)
@@ -164,19 +184,18 @@ if mp:
     print(json.dumps(mp, indent=2))
 " 2>/dev/null || echo "")"
 
-    echo ""
-    if [ -n "${existing}" ]; then
-        warn "Existing mempalace MCP config found in ${settings_file}:"
-        echo "${existing}"
-        echo ""
-        read -rp "Replace with HTTP config? [y/N] " confirm
-        [[ "${confirm}" =~ ^[yY]$ ]] || { info "Skipped — update manually if needed."; return; }
-    else
-        read -rp "Add mempalace HTTP MCP config to ${settings_file}? [Y/n] " confirm
-        [[ "${confirm}" =~ ^[nN]$ ]] && { info "Skipped."; return; }
-    fi
+        if [ -n "${existing}" ]; then
+            warn "Existing mempalace MCP config found in ${settings_file}:"
+            echo "${existing}"
+            echo ""
+            read -rp "Replace with HTTP config? [y/N] " confirm
+            [[ "${confirm}" =~ ^[yY]$ ]] || { info "Skipped — update manually if needed."; return; }
+        else
+            read -rp "Add mempalace HTTP MCP config to ${settings_file}? [Y/n] " confirm
+            [[ "${confirm}" =~ ^[nN]$ ]] && { info "Skipped."; return; }
+        fi
 
-    python3 -c "
+        ${VENV_PY} -c "
 import json
 with open('${settings_file}') as f:
     cfg = json.load(f)
@@ -189,27 +208,31 @@ with open('${settings_file}', 'w') as f:
     json.dump(cfg, f, indent=2)
     f.write('\n')
 "
-    ok "Claude MCP config updated in ${settings_file}"
+        ok "Claude MCP config updated in ${settings_file}"
+    fi
 }
 
 configure_claude_mcp
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  MCP config (for manual setup or other clients):"
+echo "  Manual MCP setup (other machines / clients):"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  claude mcp add --transport http mempalace \\"
+echo "    http://${HOSTNAME_VAL}:${PORT}/mcp \\"
+echo "    --header \"Authorization: Bearer ${TOKEN}\""
+echo ""
+echo "  # or for other clients, settings.json entry:"
 cat <<CFGEOF
-{
-  "mcpServers": {
-    "mempalace": {
-      "type": "http",
-      "url": "http://${HOSTNAME_VAL}:${PORT}/mcp",
-      "headers": {
-        "Authorization": "Bearer ${TOKEN}"
+  {
+    "mcpServers": {
+      "mempalace": {
+        "type": "http",
+        "url": "http://${HOSTNAME_VAL}:${PORT}/mcp",
+        "headers": { "Authorization": "Bearer ${TOKEN}" }
       }
     }
   }
-}
 CFGEOF
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

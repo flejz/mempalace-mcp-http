@@ -43,7 +43,17 @@ mempalace-token remove    # invalidate token — blocks all clients
 
 ## Claude Code config
 
-Setup auto-configures `~/.claude/settings.json` with a confirmation prompt. Manual config:
+Setup auto-configures via `claude mcp add` with a confirmation prompt. Manual command on any machine:
+
+```bash
+claude mcp add --transport http mempalace \
+  http://<palace-host>:8765/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+Replaces the standard stdio entry (`python -m mempalace.mcp_server`) — setup.sh detects it and prompts automatically.
+
+For non-Claude clients, equivalent `settings.json` entry:
 
 ```json
 {
@@ -51,15 +61,11 @@ Setup auto-configures `~/.claude/settings.json` with a confirmation prompt. Manu
     "mempalace": {
       "type": "http",
       "url": "http://<palace-host>:8765/mcp",
-      "headers": {
-        "Authorization": "Bearer <token>"
-      }
+      "headers": { "Authorization": "Bearer <token>" }
     }
   }
 }
 ```
-
-Replaces the standard stdio entry (`python -m mempalace.mcp_server`) — setup.sh detects it and prompts automatically.
 
 ## Env vars
 
