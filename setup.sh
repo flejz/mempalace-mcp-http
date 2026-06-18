@@ -43,13 +43,24 @@ mkdir -p "${INSTALL_DIR}"
 
 # Find which Python has mempalace importable
 _mp_python=""
+
+# 1. Try system python3/python
 for _py in python3 python; do
     if command -v "${_py}" >/dev/null 2>&1 && "${_py}" -c "import mempalace" 2>/dev/null; then
         _mp_python="$(command -v "${_py}")"
         break
     fi
 done
-# uv tool installs mempalace in an isolated env — find it via uv tool dir
+
+# 2. Read shebang from the mempalace binary — works for pipx, manual venv, uv tool
+if [ -z "${_mp_python}" ] && command -v mempalace >/dev/null 2>&1; then
+    _shebang_py="$(head -1 "$(command -v mempalace)" 2>/dev/null | sed 's|^#! *||' | awk '{print $1}')"
+    if [ -x "${_shebang_py:-}" ] && "${_shebang_py}" -c "import mempalace" 2>/dev/null; then
+        _mp_python="${_shebang_py}"
+    fi
+fi
+
+# 3. uv tool dir fallback (if uv is installed)
 if [ -z "${_mp_python}" ] && command -v uv >/dev/null 2>&1; then
     _tool_base="$(uv tool dir 2>/dev/null || true)"
     if [ -n "${_tool_base}" ]; then
@@ -61,8 +72,10 @@ if [ -z "${_mp_python}" ] && command -v uv >/dev/null 2>&1; then
         done
     fi
 fi
+
 if [ -z "${_mp_python}" ]; then
-    err "Cannot find a Python that can import mempalace. Ensure mempalace is installed."
+    err "Cannot find a Python that can import mempalace."
+    err "Tried: system python3, shebang of '$(command -v mempalace 2>/dev/null || echo mempalace)', uv tool dir"
     exit 1
 fi
 
