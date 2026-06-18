@@ -16,9 +16,9 @@ ok()   { echo -e "${GREEN}✓ $*${NC}"; }
 info() { echo -e "${YELLOW}→ $*${NC}"; }
 warn() { echo -e "${YELLOW}WARNING: $*${NC}"; }
 
-# When run via curl|bash, BASH_SOURCE[0] is unbound — download companion files
-if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# $0 is "bash" when piped (curl|bash); a file path when run directly
+if [ -f "$0" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 else
     SCRIPT_DIR="$(mktemp -d)"
     trap 'rm -rf "${SCRIPT_DIR}"' EXIT
