@@ -59,7 +59,7 @@ Setup auto-configures `~/.claude/settings.json` with a confirmation prompt. Manu
 }
 ```
 
-If replacing an existing ssh-based mempalace entry, remove the old `command`/`args` keys — they conflict.
+Replaces the standard stdio entry (`python -m mempalace.mcp_server`) — setup.sh detects it and prompts automatically.
 
 ## Env vars
 
