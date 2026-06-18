@@ -1,0 +1,13 @@
+[Unit]
+Description=MemPalace MCP HTTP Server
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/mempalace-mcp-http/env
+ExecStart=/bin/sh -c 'exec python3 %h/.local/lib/mempalace-mcp-http/mempalace_http.py'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
