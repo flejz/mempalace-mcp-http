@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${HOME}/.local/lib/mempalace-mcp-http"
+VENV_DIR="${INSTALL_DIR}/venv"
 BIN_DIR="${HOME}/.local/bin"
 CONFIG_DIR="${HOME}/.config/mempalace-mcp-http"
 ENV_FILE="${CONFIG_DIR}/env"
@@ -25,13 +26,38 @@ if ! (mempalace --version >/dev/null 2>&1 || python3 -c "import mempalace" 2>/de
 fi
 ok "mempalace found"
 
-# 2. Check HTTP deps (fastapi, uvicorn) — OK to install these
-info "Checking HTTP server deps..."
-if ! python3 -c "import fastapi, uvicorn" 2>/dev/null; then
-    info "Installing fastapi and uvicorn..."
-    pip install fastapi "uvicorn[standard]" --quiet
+# 2. Resolve a Python that can import mempalace, install HTTP deps alongside it
+info "Setting up HTTP deps..."
+mkdir -p "${INSTALL_DIR}"
+
+# Find which Python has mempalace importable
+_mp_python=""
+for _py in python3 python; do
+    if command -v "${_py}" >/dev/null 2>&1 && "${_py}" -c "import mempalace" 2>/dev/null; then
+        _mp_python="$(command -v "${_py}")"
+        break
+    fi
+done
+# uv tool installs mempalace in an isolated env — locate its Python
+if [ -z "${_mp_python}" ] && command -v uv >/dev/null 2>&1; then
+    _uv_py="$(uv tool run --with mempalace python -c "import sys; print(sys.executable)" 2>/dev/null || true)"
+    [ -n "${_uv_py}" ] && _mp_python="${_uv_py}"
 fi
-ok "HTTP deps ready"
+if [ -z "${_mp_python}" ]; then
+    err "Cannot find a Python that can import mempalace. Ensure mempalace is installed."
+    exit 1
+fi
+
+# Build venv using the same Python so mempalace is reachable via --system-site-packages
+if [ ! -f "${VENV_DIR}/bin/python" ]; then
+    "${_mp_python}" -m venv --system-site-packages "${VENV_DIR}"
+fi
+VENV_PY="${VENV_DIR}/bin/python"
+if ! "${VENV_PY}" -c "import fastapi, uvicorn" 2>/dev/null; then
+    info "Installing fastapi and uvicorn into venv..."
+    "${VENV_DIR}/bin/pip" install fastapi "uvicorn[standard]" --quiet
+fi
+ok "HTTP deps ready (venv at ${VENV_DIR})"
 
 # 3. Install server script and mempalace-token CLI
 info "Installing to ${INSTALL_DIR}..."
@@ -63,7 +89,6 @@ TOKEN="${MEMPALACE_HTTP_TOKEN:-}"
 # 5. Systemd user service (or manual fallback)
 if command -v systemctl >/dev/null 2>&1 && systemctl --user status >/dev/null 2>&1; then
     SYSTEMD_DIR="${HOME}/.config/systemd/user"
-    PYTHON3="$(command -v python3)"
     mkdir -p "${SYSTEMD_DIR}"
     cat > "${SYSTEMD_DIR}/${SERVICE_NAME}.service" <<SVCEOF
 [Unit]
@@ -73,7 +98,7 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=${ENV_FILE}
-ExecStart=${PYTHON3} ${INSTALL_DIR}/mempalace_http.py
+ExecStart=${VENV_PY} ${INSTALL_DIR}/mempalace_http.py
 Restart=on-failure
 RestartSec=5
 
@@ -86,7 +111,7 @@ SVCEOF
 else
     echo ""
     info "systemd not available. Start manually:"
-    echo "  source ${ENV_FILE} && python3 ${INSTALL_DIR}/mempalace_http.py"
+    echo "  source ${ENV_FILE} && ${VENV_PY} ${INSTALL_DIR}/mempalace_http.py"
 fi
 
 HOSTNAME_VAL="$(hostname -f 2>/dev/null || hostname)"
