@@ -63,19 +63,24 @@ case "${cmd}" in
     echo "${new_token}"
     ;;
 
-  revoke)
-    warn "Removing token — server will accept all requests (no auth)"
-    sed -i "/^MEMPALACE_HTTP_TOKEN=/d" "${ENV_FILE}" 2>/dev/null || true
+  remove)
+    warn "Token will be invalidated — all connected clients lose access immediately"
+    warn "Server stays in auth-required mode. Use 'rotate' to generate a new usable token."
+    echo ""
+    read -rp "Confirm invalidation? [y/N] " confirm
+    [[ "${confirm}" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
+    dead="$(openssl rand -hex 32)"
+    set_token "${dead}"
     restart_service
-    ok "Token revoked — server now open"
+    ok "Token invalidated — server requires auth but no valid token exists"
     ;;
 
   help|*)
-    echo "Usage: token.sh <command>"
+    echo "Usage: mempalace-token <command>"
     echo ""
     echo "  show    masked preview of current token"
     echo "  reveal  full token (keep secret)"
     echo "  rotate  generate new token, restart service"
-    echo "  revoke  remove token (open/no-auth mode)"
+    echo "  remove  invalidate token — blocks all clients, requires rotate to recover"
     ;;
 esac

@@ -15,27 +15,35 @@ This tool extends mempalace — does not replace or install it.
 ## Setup
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/flejz/mempalace-mcp-http/master/setup.sh | bash
+```
+
+Or clone and run:
+
+```bash
 git clone https://github.com/flejz/mempalace-mcp-http
 cd mempalace-mcp-http
 ./setup.sh
 ```
 
-Detects mempalace, installs HTTP deps, configures systemd service, prints MCP config to paste.
+Detects mempalace, installs HTTP deps, configures systemd service. If `~/.claude/settings.json` exists, prompts to add (or replace existing mempalace entry with) the HTTP MCP config automatically.
 
 ## Token management
 
+`mempalace-token` is installed to `~/.local/bin/` during setup:
+
 ```bash
-token.sh show      # masked preview
-token.sh reveal    # full token
-token.sh rotate    # new token + restart service
-token.sh revoke    # remove token (open mode)
+mempalace-token show      # masked preview
+mempalace-token reveal    # full token
+mempalace-token rotate    # new token + restart service
+mempalace-token remove    # invalidate token — blocks all clients
 ```
 
-Located at `~/.local/lib/mempalace-mcp-http/token.sh` after setup.
+`remove` replaces the token with an unguessable value (server stays auth-required, no valid token exists). Use `rotate` to recover access.
 
 ## Claude Code config
 
-Add to `~/.claude/settings.json`:
+Setup auto-configures `~/.claude/settings.json` with a confirmation prompt. Manual config:
 
 ```json
 {
@@ -50,6 +58,8 @@ Add to `~/.claude/settings.json`:
   }
 }
 ```
+
+If replacing an existing ssh-based mempalace entry, remove the old `command`/`args` keys — they conflict.
 
 ## Env vars
 
