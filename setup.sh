@@ -2,7 +2,6 @@
 set -euo pipefail
 
 INSTALL_DIR="${HOME}/.local/lib/mempalace-mcp-http"
-VENV_DIR="${INSTALL_DIR}/venv"
 BIN_DIR="${HOME}/.local/bin"
 CONFIG_DIR="${HOME}/.config/mempalace-mcp-http"
 ENV_FILE="${CONFIG_DIR}/env"
@@ -37,14 +36,13 @@ if ! (mempalace --version >/dev/null 2>&1 || python3 -c "import mempalace" 2>/de
 fi
 ok "mempalace found"
 
-# 2. Resolve a Python that can import mempalace, install HTTP deps alongside it
+# 2. Find mempalace Python, inject HTTP deps into its env
 info "Setting up HTTP deps..."
 mkdir -p "${INSTALL_DIR}"
 
-# Find which Python has mempalace importable
+# Find the Python that runs mempalace (system, pipx, uv tool, or manual venv)
 _mp_python=""
 
-# 1. Try system python3/python
 for _py in python3 python; do
     if command -v "${_py}" >/dev/null 2>&1 && "${_py}" -c "import mempalace" 2>/dev/null; then
         _mp_python="$(command -v "${_py}")"
@@ -52,7 +50,7 @@ for _py in python3 python; do
     fi
 done
 
-# 2. Read shebang from the mempalace binary — works for pipx, manual venv, uv tool
+# Shebang of the mempalace binary — works for pipx, uv tool, any venv-backed install
 if [ -z "${_mp_python}" ] && command -v mempalace >/dev/null 2>&1; then
     _shebang_py="$(head -1 "$(command -v mempalace)" 2>/dev/null | sed 's|^#! *||' | awk '{print $1}')"
     if [ -x "${_shebang_py:-}" ] && "${_shebang_py}" -c "import mempalace" 2>/dev/null; then
@@ -60,7 +58,7 @@ if [ -z "${_mp_python}" ] && command -v mempalace >/dev/null 2>&1; then
     fi
 fi
 
-# 3. uv tool dir fallback (if uv is installed)
+# uv tool dir fallback
 if [ -z "${_mp_python}" ] && command -v uv >/dev/null 2>&1; then
     _tool_base="$(uv tool dir 2>/dev/null || true)"
     if [ -n "${_tool_base}" ]; then
@@ -79,16 +77,19 @@ if [ -z "${_mp_python}" ]; then
     exit 1
 fi
 
-# Build venv using the same Python so mempalace is reachable via --system-site-packages
-if [ ! -f "${VENV_DIR}/bin/python" ]; then
-    "${_mp_python}" -m venv --system-site-packages "${VENV_DIR}"
+# Install fastapi + uvicorn into the same env as mempalace
+# pipx: use pipx inject (keeps env clean); otherwise pip install into that Python's env
+VENV_PY="${_mp_python}"
+if ! "${_mp_python}" -c "import fastapi, uvicorn" 2>/dev/null; then
+    if command -v pipx >/dev/null 2>&1 && pipx list 2>/dev/null | grep -q "mempalace"; then
+        info "Installing fastapi and uvicorn via pipx inject..."
+        pipx inject mempalace fastapi "uvicorn[standard]" --quiet
+    else
+        info "Installing fastapi and uvicorn..."
+        "${_mp_python}" -m pip install fastapi "uvicorn[standard]" --quiet
+    fi
 fi
-VENV_PY="${VENV_DIR}/bin/python"
-if ! "${VENV_PY}" -c "import fastapi, uvicorn" 2>/dev/null; then
-    info "Installing fastapi and uvicorn into venv..."
-    "${VENV_DIR}/bin/pip" install fastapi "uvicorn[standard]" --quiet
-fi
-ok "HTTP deps ready (venv at ${VENV_DIR})"
+ok "HTTP deps ready (using ${VENV_PY})"
 
 # 3. Install server script and mempalace-token CLI
 info "Installing to ${INSTALL_DIR}..."
